@@ -1,3 +1,4 @@
+from html import unescape
 import requests
 from django.utils.html import strip_tags
 from .licenses import is_allowed
@@ -16,14 +17,20 @@ def _get(params):
 
 
 def get_category_titles(category):
-    data = _get({
+    params = {
         'action': 'query',
         'list': 'categorymembers',
         'cmtitle': f'Category:{category}',
         'cmtype': 'page',
         'cmlimit': 500,
-    })
-    return [member['title'] for member in data['query']['categorymembers']]
+    }
+    titles = []
+    while True:
+        data = _get(params)
+        titles += [member['title'] for member in data['query']['categorymembers']]
+        if 'continue' not in data:
+            return titles
+        params = {**params, **data['continue']}
 
 
 def get_article(title):
@@ -70,7 +77,7 @@ def _get_image(file_name):
     meta = info[0].get('extmetadata', {})
     license_name = meta.get('LicenseShortName', {}).get('value', '')
     non_free = meta.get('NonFree', {}).get('value', '') == 'true'
-    attribution = strip_tags(meta.get('Artist', {}).get('value', '')).strip()[:300]
+    attribution = unescape(strip_tags(meta.get('Artist', {}).get('value', ''))).strip()[:300]
 
     if non_free or not is_allowed(license_name):
         return None

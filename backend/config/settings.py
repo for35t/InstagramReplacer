@@ -14,6 +14,7 @@ import os
 from datetime import timedelta
 from pathlib import Path
 from dotenv import load_dotenv
+from corsheaders.defaults import default_headers
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -31,7 +32,8 @@ SECRET_KEY = 'django-insecure-n-g$6!2=t^zh&*h&^dy)wpf4ft54=&sc_!v*99#*$miv_#ytn4
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+# Any host in development so phones on the LAN can reach the API.
+ALLOWED_HOSTS = ['*'] if DEBUG else [h.strip() for h in os.environ.get('ALLOWED_HOSTS', '').split(',') if h.strip()]
 
 
 # Application definition
@@ -159,3 +161,5 @@ SIMPLE_JWT = {
 }
 
 CORS_ALLOWED_ORIGINS = ['http://localhost:8081']
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = (*default_headers, 'x-client-type')

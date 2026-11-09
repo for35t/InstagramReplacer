@@ -1,6 +1,7 @@
 import random
 import re
 import groq
+import requests
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from posts import llm
@@ -67,7 +68,10 @@ class Command(BaseCommand):
         titles = []
         for line in category.wiki_categories.splitlines():
             if line.strip():
-                titles += wikipedia.get_category_titles(line.strip())
+                try:
+                    titles += wikipedia.get_category_titles(line.strip())
+                except requests.RequestException as error:
+                    self.stdout.write(self.style.WARNING(f'  [{line.strip()}] skipped: {error}'))
 
         existing = set(Post.objects.values_list('title', flat=True))
         candidates = [title for title in titles if title not in existing]
@@ -77,7 +81,11 @@ class Command(BaseCommand):
         for title in candidates[:MAX_ATTEMPTS]:
             if created >= count:
                 break
-            article = wikipedia.get_article(title)
+            try:
+                article = wikipedia.get_article(title)
+            except requests.RequestException as error:
+                self.stdout.write(self.style.WARNING(f'  [{title}] skipped: {error}'))
+                continue
             if article is None:
                 continue
             _, was_created = Post.objects.get_or_create(
