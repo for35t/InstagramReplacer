@@ -6,7 +6,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from posts import llm
 from posts.models import Category, Post
-from posts.sources import wikipedia
+from posts.sources import openverse, wikipedia
 from posts.validation import missing_numbers
 
 MAX_ATTEMPTS = 20
@@ -40,6 +40,18 @@ class Command(BaseCommand):
             created = self.fill_category(category, options['count'])
             self.stdout.write(f'{category.name}: {created} new posts')
 
+    def find_image(self, article, category):
+        if article['image']:
+            return article['image']
+        try:
+            return (
+                wikipedia.search_commons_image(article['title'])
+                or openverse.search_image(category.image_theme or category.name)
+            )
+        except requests.RequestException as error:
+            self.stdout.write(self.style.WARNING(f'  [{article["title"]}] image search error: {error}'))
+            return None
+
     def build_fact(self, article):
         title = article['title']
         try:
@@ -68,10 +80,7 @@ class Command(BaseCommand):
         titles = []
         for line in category.wiki_categories.splitlines():
             if line.strip():
-                try:
-                    titles += wikipedia.get_category_titles(line.strip())
-                except requests.RequestException as error:
-                    self.stdout.write(self.style.WARNING(f'  [{line.strip()}] skipped: {error}'))
+                titles += wikipedia.get_category_titles(line.strip())
 
         existing = set(Post.objects.values_list('title', flat=True))
         candidates = [title for title in titles if title not in existing]
@@ -81,13 +90,15 @@ class Command(BaseCommand):
         for title in candidates[:MAX_ATTEMPTS]:
             if created >= count:
                 break
-            try:
-                article = wikipedia.get_article(title)
-            except requests.RequestException as error:
-                self.stdout.write(self.style.WARNING(f'  [{title}] skipped: {error}'))
-                continue
+            article = wikipedia.get_article(title)
             if article is None:
                 continue
+
+            image = self.find_image(article, category)
+            if image is None:
+                self.stdout.write(self.style.WARNING(f'  [{title}] skipped: no usable image'))
+                continue
+
             _, was_created = Post.objects.get_or_create(
                 source_url=article['url'],
                 defaults={
@@ -95,9 +106,10 @@ class Command(BaseCommand):
                     'title': article['title'],
                     'fact': self.build_fact(article),
                     'description': make_description(article['text']),
-                    'image_url': article['image_url'],
-                    'image_attribution': article['image_attribution'],
-                    'image_license': article['image_license'],
+                    'image_url': image['url'],
+                    'image_attribution': image['attribution'],
+                    'image_license': image['license'],
+                    'image_source_url': image['source_url'],
                     'source_name': article['source_name'],
                     'text_license': article['text_license'],
                     'source_fetched_at': timezone.now(),

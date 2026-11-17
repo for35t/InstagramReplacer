@@ -15,7 +15,7 @@ class PostSerializer(serializers.ModelSerializer):
         model = Post
         fields = [
             'id', 'category', 'title', 'fact', 'description',
-            'image_url', 'image_attribution', 'image_license',
+            'image_url', 'image_attribution', 'image_license', 'image_source_url',
             'source_name', 'source_url', 'text_license', 'created_at',
         ]
 
@@ -24,4 +24,5 @@ class PostSerializer(serializers.ModelSerializer):
         if not instance.image_license:
             data['image_url'] = ''
             data['image_attribution'] = ''
+            data['image_source_url'] = ''
         return data

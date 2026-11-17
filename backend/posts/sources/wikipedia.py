@@ -1,36 +1,31 @@
-from html import unescape
 import requests
 from django.utils.html import strip_tags
 from .licenses import is_allowed
 
-API_URL = 'https://en.wikipedia.org/w/api.php'
-HEADERS = {'User-Agent': 'InstagramReplacer/0.1 (forestzoto@gmail.com)'}
+WIKIPEDIA_API = 'https://en.wikipedia.org/w/api.php'
+COMMONS_API = 'https://commons.wikimedia.org/w/api.php'
+from .common import HEADERS
 MIN_TEXT_LENGTH = 300
 IMAGE_WIDTH = 1080
+IMAGE_INFO = {'prop': 'imageinfo', 'iiprop': 'url|extmetadata', 'iiurlwidth': IMAGE_WIDTH}
 
 
-def _get(params):
+def _get(params, api_url=WIKIPEDIA_API):
     params = {**params, 'format': 'json', 'formatversion': 2}
-    response = requests.get(API_URL, params=params, headers=HEADERS, timeout=10)
+    response = requests.get(api_url, params=params, headers=HEADERS, timeout=10)
     response.raise_for_status()
     return response.json()
 
 
 def get_category_titles(category):
-    params = {
+    data = _get({
         'action': 'query',
         'list': 'categorymembers',
         'cmtitle': f'Category:{category}',
         'cmtype': 'page',
         'cmlimit': 500,
-    }
-    titles = []
-    while True:
-        data = _get(params)
-        titles += [member['title'] for member in data['query']['categorymembers']]
-        if 'continue' not in data:
-            return titles
-        params = {**params, **data['continue']}
+    })
+    return [member['title'] for member in data['query']['categorymembers']]
 
 
 def get_article(title):
@@ -49,35 +44,47 @@ def get_article(title):
     if page.get('missing') or len(text) < MIN_TEXT_LENGTH:
         return None
 
-    image = _get_image(page['pageimage']) if 'pageimage' in page else None
     return {
         'title': page['title'],
         'text': text,
         'url': page['fullurl'],
         'source_name': 'Wikipedia',
         'text_license': 'CC BY-SA 4.0',
-        'image_url': image['url'] if image else '',
-        'image_attribution': image['attribution'] if image else '',
-        'image_license': image['license'] if image else '',
+        'image': _get_file_image(page['pageimage']) if 'pageimage' in page else None,
     }
 
 
-def _get_image(file_name):
+def search_commons_image(query):
     data = _get({
         'action': 'query',
-        'titles': f'File:{file_name}',
-        'prop': 'imageinfo',
-        'iiprop': 'url|extmetadata',
-        'iiurlwidth': IMAGE_WIDTH,
-    })
-    info = data['query']['pages'][0].get('imageinfo')
+        'generator': 'search',
+        'gsrsearch': f'{query} filetype:bitmap',
+        'gsrnamespace': 6,
+        'gsrlimit': 10,
+        **IMAGE_INFO,
+    }, api_url=COMMONS_API)
+    pages = sorted(data.get('query', {}).get('pages', []), key=lambda page: page.get('index', 0))
+    for page in pages:
+        image = _parse_image(page)
+        if image:
+            return image
+    return None
+
+
+def _get_file_image(file_name):
+    data = _get({'action': 'query', 'titles': f'File:{file_name}', **IMAGE_INFO})
+    return _parse_image(data['query']['pages'][0])
+
+
+def _parse_image(page):
+    info = page.get('imageinfo')
     if not info:
         return None
 
     meta = info[0].get('extmetadata', {})
     license_name = meta.get('LicenseShortName', {}).get('value', '')
     non_free = meta.get('NonFree', {}).get('value', '') == 'true'
-    attribution = unescape(strip_tags(meta.get('Artist', {}).get('value', ''))).strip()[:300]
+    attribution = strip_tags(meta.get('Artist', {}).get('value', '')).strip()[:300]
 
     if non_free or not is_allowed(license_name):
         return None
@@ -86,6 +93,7 @@ def _get_image(file_name):
 
     return {
         'url': info[0].get('thumburl', info[0]['url']),
-        'license': license_name,
         'attribution': attribution,
+        'license': license_name,
+        'source_url': info[0].get('descriptionurl', ''),
     }

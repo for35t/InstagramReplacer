@@ -5,6 +5,7 @@ class Category(models.Model):
     name = models.CharField(max_length=50, unique=True)
     slug = models.SlugField(unique=True)
     wiki_categories = models.TextField(blank=True, help_text='One Wikipedia category per line, without "Category:"')
+    image_theme = models.CharField(max_length=100, blank=True, help_text='Stock photo search term, e.g. "concert stage"')
 
     class Meta:
         verbose_name_plural = 'categories'
@@ -21,6 +22,7 @@ class Post(models.Model):
     image_url = models.URLField(max_length=500, blank=True)
     image_attribution = models.CharField(max_length=300, blank=True)
     image_license = models.CharField(max_length=50, blank=True)
+    image_source_url = models.URLField(max_length=500, blank=True)
     source_url = models.URLField(max_length=500, unique=True)
     source_name = models.CharField(max_length=50, default='Wikipedia')
     text_license = models.CharField(max_length=50, default='CC BY-SA 4.0')

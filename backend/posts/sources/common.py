@@ -1,0 +1,1 @@
+HEADERS = {'User-Agent': 'InstagramReplacer/0.1 (your-email@example.com)'}
